@@ -45,7 +45,24 @@ Get Picnic's current weekly promotions/deals from the app's "Alle acties" page.
 - `limit` (number, optional): Maximum number of promotions to return (1-100, default: 25)
 - `offset` (number, optional): Number of promotions to skip for pagination (default: 0)
 
-**Returns:** Promoted products with product ID, promotion ID, name, current price, unit, promotion label, original price when shown, image ID, and pagination metadata.
+**Returns:** Promoted products with product ID, promotion ID, name, the promotional price displayed on the page, unit, promotion label, original price when shown, image ID, and pagination metadata. A displayed price does not prove that the discount is selected or applied to the cart.
+
+#### `picnic_get_family_benefits`
+
+Get the known German Picnic Family benefits plus the authenticated PromoBox summary exposed by `/pages/promo-page-root`.
+
+**Returns:** The Family benefit summary plus `account_evidence.status` and filtered page signals. When Picnic exposes PromoBox state, `promo_box_state` reports the available-promotion count and Picnic's raw activation counters with an explicit warning that they do not verify selection or savings. The page exposes no authoritative subscription status or account-wide monetary savings total.
+
+#### `picnic_list_wunsch_rabatt_choices`
+
+Read-only listing of current personalized PromoBox choices identified by the PromoBox tile ID and targeted-campaign context exposed by Picnic.
+
+**Parameters:**
+
+- `limit` (number, optional): Maximum number of choices to return (1-100, default: 25)
+- `offset` (number, optional): Number of choices to skip for pagination (default: 0)
+
+**Returns:** Filtered choices with displayed promotional prices, pagination, activation limitations, and (when exposed) raw `promo_box_state`. It is read-only: cart additions can change Picnic's `isExplicitlyActivated` and `remainingActivations` fields while cart prices remain undiscounted, and `/pages/task/get-promo-box-promos` only refreshes those fields. An empty list means the page exposed no recognizable personalized choice; it does not prove that the account has none.
 
 #### `picnic_get_suggestions`
 
