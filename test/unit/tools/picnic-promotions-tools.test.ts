@@ -27,6 +27,8 @@ function promoTile({
   label,
   price,
   originalPrice,
+  targeted = false,
+  promoBox = false,
 }: {
   productId: string
   promotionId: string
@@ -34,10 +36,12 @@ function promoTile({
   label: string
   price: number
   originalPrice?: number
+  targeted?: boolean
+  promoBox?: boolean
 }) {
   return {
     type: "PML",
-    id: `selling-unit-${productId}-tile`,
+    id: `selling-unit-${productId}-tile${promoBox ? "-PromoBox" : ""}`,
     analytics: {
       contexts: [
         {
@@ -56,6 +60,14 @@ function promoTile({
           },
           schema: "iglu:tech.picnic.snowplow.analytics/promotion/jsonschema/1-1-0",
         },
+        ...(targeted
+          ? [
+              {
+                data: { campaign_name: "campaign-id" },
+                schema: "iglu:tech.picnic.snowplow.analytics/targeted_campaign/jsonschema/1-1-0",
+              },
+            ]
+          : []),
       ],
     },
     content: {
@@ -135,12 +147,7 @@ describe("promotions tools", () => {
     const result = await toolRegistry.executeTool("picnic_get_promotions", {})
     const payload = parseToolResult(result)
 
-    expect(mocks.sendRequest).toHaveBeenCalledWith(
-      "GET",
-      "/pages/promo-page-root",
-      null,
-      true,
-    )
+    expect(mocks.sendRequest).toHaveBeenCalledWith("GET", "/pages/promo-page-root", null, true)
     expect(payload.promotions).toEqual([
       {
         product_id: "s100",
@@ -222,5 +229,241 @@ describe("promotions tools", () => {
       total: 3,
       hasMore: true,
     })
+  })
+
+  it("exposes Family benefits and signals from a nested Picnic page", async () => {
+    mocks.sendRequest.mockResolvedValue({
+      layout: {
+        body: {
+          children: [
+            {
+              id: "family-benefits-card",
+              content: {
+                children: [
+                  { markdown: "Picnic Family" },
+                  { markdown: "10% auf Obst und Gemüse" },
+                  { markdown: "10% auf Markthalle" },
+                  { markdown: "2x more Wunsch-Rabatt choices" },
+                  { markdown: "Reservierbare Lieferfenster" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })
+
+    const toolRegistry = await loadTools()
+    const result = await toolRegistry.executeTool("picnic_get_family_benefits", {})
+    const payload = parseToolResult(result)
+
+    expect(mocks.sendRequest).toHaveBeenCalledWith("GET", "/pages/promo-page-root", null, true)
+    expect(payload).toEqual({
+      source: {
+        pageId: "promo-page-root",
+        endpoint: "/pages/promo-page-root",
+      },
+      benefits: [
+        { id: "produce", description: "10% off fruit and vegetables" },
+        { id: "markthalle", description: "10% off Markthalle" },
+        { id: "wunsch_rabatt", description: "2x more Wunsch-Rabatt choices" },
+        { id: "delivery_windows", description: "Up to 3x as many delivery windows" },
+        { id: "reservable_windows", description: "Reservable delivery windows" },
+      ],
+      account_evidence: {
+        status: "family_data_exposed",
+        signals: [
+          "family-benefits-card",
+          "Picnic Family",
+          "10% auf Markthalle",
+          "2x more Wunsch-Rabatt choices",
+          "Reservierbare Lieferfenster",
+        ],
+      },
+    })
+  })
+
+  it("does not claim Family data is exposed when the page has no Family signals", async () => {
+    mocks.sendRequest.mockResolvedValue({
+      layout: { body: { children: [{ markdown: "Angebote der Woche" }, regularTile()] } },
+    })
+
+    const toolRegistry = await loadTools()
+    const result = await toolRegistry.executeTool("picnic_get_family_benefits", {})
+    const payload = parseToolResult(result)
+
+    expect(payload.account_evidence).toEqual({
+      status: "not_exposed",
+      signals: [],
+    })
+  })
+
+  it("lists only live-shaped PromoBox targeted-campaign tiles", async () => {
+    mocks.sendRequest.mockResolvedValue({
+      layout: {
+        body: {
+          children: [
+            {
+              children: [
+                promoTile({
+                  productId: "s-wunsch-1",
+                  promotionId: "choice-1",
+                  name: "Chosen coffee",
+                  label: "20% Rabatt",
+                  price: 399,
+                  originalPrice: 499,
+                  targeted: true,
+                  promoBox: true,
+                }),
+              ],
+            },
+            promoTile({
+              productId: "s-weekly-1",
+              promotionId: "weekly-1",
+              name: "Weekly pasta",
+              label: "1+1 gratis",
+              price: 239,
+            }),
+          ],
+        },
+      },
+    })
+
+    const toolRegistry = await loadTools()
+    const result = await toolRegistry.executeTool("picnic_list_wunsch_rabatt_choices", {})
+    const payload = parseToolResult(result)
+
+    expect(payload.choices).toEqual([
+      expect.objectContaining({
+        product_id: "s-wunsch-1",
+        promotion_id: "choice-1",
+        price: 399,
+      }),
+    ])
+    expect(payload.pagination).toEqual({
+      offset: 0,
+      limit: 25,
+      returned: 1,
+      total: 1,
+      hasMore: false,
+    })
+    expect(payload.activation).toEqual({
+      mode: "unavailable",
+      selection_tool_available: false,
+      limitation:
+        "Cart additions can change Picnic's isExplicitlyActivated/remainingActivations fields without applying the displayed discount to cart prices. The exposed PromoBox refresh is read-only, and no verified selection action is available.",
+    })
+  })
+
+  it("exposes PromoBox counters without treating them as selection or savings proof", async () => {
+    mocks.sendRequest.mockResolvedValue({
+      layout: {
+        id: "targeted-promo",
+        body: {
+          child: {
+            children: [
+              {
+                onMount: {
+                  callback: {
+                    props: {
+                      v0: {
+                        availablePromoIDs: {
+                          "choice-1": { isExplicitlyActivated: true },
+                          "choice-2": { isExplicitlyActivated: false },
+                        },
+                        remainingActivations: 2,
+                      },
+                    },
+                  },
+                },
+              },
+              promoTile({
+                productId: "s-choice-1",
+                promotionId: "choice-1",
+                name: "Personal tomatoes",
+                label: "20% Rabatt",
+                price: 180,
+                originalPrice: 225,
+                targeted: true,
+                promoBox: true,
+              }),
+              promoTile({
+                productId: "s-targeted-weekly-1",
+                promotionId: "targeted-weekly-1",
+                name: "Targeted weekly pasta",
+                label: "20% Rabatt",
+                price: 160,
+                originalPrice: 200,
+                targeted: true,
+              }),
+              promoTile({
+                productId: "s-weekly-1",
+                promotionId: "weekly-1",
+                name: "Weekly pasta",
+                label: "1+1 gratis",
+                price: 239,
+              }),
+            ],
+          },
+        },
+      },
+    })
+
+    const toolRegistry = await loadTools()
+    const choices = parseToolResult(
+      await toolRegistry.executeTool("picnic_list_wunsch_rabatt_choices", {}),
+    )
+    const family = parseToolResult(await toolRegistry.executeTool("picnic_get_family_benefits", {}))
+
+    expect(choices.choices).toEqual([
+      expect.objectContaining({ product_id: "s-choice-1", promotion_id: "choice-1" }),
+    ])
+    expect(choices.promo_box_state).toEqual({
+      available_promotions_total: 2,
+      server_reported_remaining_activations: 2,
+      server_reported_explicit_activations: 1,
+      verification: "not_proof_of_selection_or_savings",
+    })
+    expect(family.promo_box_state).toEqual(choices.promo_box_state)
+  })
+
+  it("does not expose an activation path when PromoBox cards remain unselected", async () => {
+    mocks.sendRequest.mockResolvedValue({
+      layout: {
+        body: {
+          children: [
+            {
+              availablePromoIDs: { "choice-1": { isExplicitlyActivated: false } },
+              remainingActivations: 10,
+            },
+            promoTile({
+              productId: "s1021587",
+              promotionId: "choice-1",
+              name: "Paprika Mix",
+              label: "20% Rabatt",
+              price: 183,
+              originalPrice: 229,
+              targeted: true,
+              promoBox: true,
+            }),
+          ],
+        },
+      },
+    })
+
+    const toolRegistry = await loadTools()
+    const payload = parseToolResult(
+      await toolRegistry.executeTool("picnic_list_wunsch_rabatt_choices", {}),
+    )
+
+    expect(payload.activation).toEqual({
+      mode: "unavailable",
+      selection_tool_available: false,
+      limitation:
+        "Cart additions can change Picnic's isExplicitlyActivated/remainingActivations fields without applying the displayed discount to cart prices. The exposed PromoBox refresh is read-only, and no verified selection action is available.",
+    })
+    expect(
+      toolRegistry.getToolsList().some((tool) => tool.name === "picnic_activate_wunsch_rabatt"),
+    ).toBe(false)
   })
 })
