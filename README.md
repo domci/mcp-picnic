@@ -623,6 +623,28 @@ npm run typecheck
 npm run lint
 ```
 
+### Dependency security maintenance
+
+Use `npm ci --ignore-scripts`, `npm run build`, `npm run typecheck`, and
+`npm test -- --maxWorkers=2` to verify dependency updates without
+starting the server. Check both `npm audit` and `npm audit --omit=dev`.
+
+The overrides keep the Hono Node adapter on patched 1.x and Vite on patched 7.x,
+within their parents' supported ranges. Vitest 4.1.12 and Vite 7.3.7 are tested on
+Node.js 24.21.0; Vite requires Node.js 20.19+ or 22.12+ (Vitest excludes Node.js 21/23).
+The TypeScript ESLint 6.x override replaces its exact vulnerable minimatch 9.x pin
+with a patched release of the same major. Keep these overrides narrow.
+
+The tested Vitest 4 migration clears the mocker/worker advisories. Constructor
+mocks use regular functions because Vitest 4 does not construct arrow functions;
+the removed `minWorkers` CLI option is no longer used.
+
+One moderate development-only advisory remains: GHSA-rxp7-6hxx-x8q5 in the release
+tool's bundled npm `ip-address` dependency. Both the latest compatible npm 11.21.1
+and npm 12.2.1 still bundle vulnerable `ip-address` 10.7.2, so no fixed upstream npm
+bundle is available in those releases. Do not override or edit bundled contents.
+Production-only audit is clean; recheck the upstream bundle before updating.
+
 ### Project Structure
 
 ```

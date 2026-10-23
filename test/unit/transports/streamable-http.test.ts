@@ -21,7 +21,7 @@ const mockTransport = {
 }
 
 vi.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => ({
-  StreamableHTTPServerTransport: vi.fn().mockImplementation((options) => {
+  StreamableHTTPServerTransport: vi.fn().mockImplementation(function (options) {
     const transport = {
       ...mockTransport,
       sessionId: "test-session-id",
@@ -35,7 +35,8 @@ vi.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => ({
         ? options.sessionIdGenerator()
         : transport.sessionId
       transport.sessionId = sessionId
-      options.onsessioninitialized(sessionId)
+      // The SDK initializes sessions after construction, not inside the constructor.
+      void Promise.resolve().then(() => options.onsessioninitialized(sessionId))
     }
     return transport
   }),
@@ -148,9 +149,11 @@ describe("StreamableHttpServer", () => {
     })
 
     await server.start()
-    await server.createNewSession()
+    const transport = await server.createNewSession()
+    expect(server.getActiveSessions()).toHaveLength(1)
     await server.stop()
 
+    expect(transport.close).toHaveBeenCalled()
     expect(server.getActiveSessions()).toHaveLength(0)
   })
 
