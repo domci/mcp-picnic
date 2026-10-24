@@ -113,6 +113,29 @@ describe("ToolRegistry", () => {
   })
 
   describe("executeTool", () => {
+    it("rejects deeply nested input before validation", async () => {
+      const inputSchema = z.object({ items: z.unknown() })
+      const parse = vi.spyOn(inputSchema, "parse")
+      toolRegistry.register({ name: "deep", description: "deep", inputSchema, handler: async () => "ok" })
+      let items: unknown = "leaf"
+      for (let i = 0; i < 65; i++) items = [items]
+      await expect(toolRegistry.executeTool("deep", { items })).rejects.toThrow(/input.*depth/i)
+      expect(parse).not.toHaveBeenCalled()
+    })
+
+    it("rejects oversized input before schema validation or handler execution", async () => {
+      const inputSchema = z.object({ items: z.array(z.string()) })
+      const parse = vi.spyOn(inputSchema, "parse")
+      const handler = vi.fn(async () => "must not run")
+      toolRegistry.register({ name: "bounded", description: "bounded", inputSchema, handler })
+
+      await expect(
+        toolRegistry.executeTool("bounded", { items: Array(10_000).fill("x") }),
+      ).rejects.toThrow(/input.*limit/i)
+      expect(parse).not.toHaveBeenCalled()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
     it("should execute a tool successfully", async () => {
       const mockTool: ToolDefinition<{ input: string }, string> = {
         name: "test-tool",

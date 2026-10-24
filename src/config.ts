@@ -19,11 +19,11 @@ const configSchema = z.object({
   ENABLE_HTTP_SERVER: z
     .string()
     .transform((val) => val === "true")
-    .default("false"),
+    .default(false),
   HTTP_PORT: z
     .string()
     .transform((val) => parseInt(val, 10))
-    .default("3000"),
+    .default(3000),
   HTTP_HOST: z.string().default("localhost"),
   HTTP_AUTH_TOKEN: z.string().optional(),
   HTTP_AUTH_HEADER_NAME: z.string().default("x-mcp-token"),

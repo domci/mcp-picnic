@@ -26,5 +26,14 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev
+
       - name: Build Docker image
         run: docker build -t mcp-picnic:pr-check .

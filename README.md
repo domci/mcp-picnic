@@ -642,11 +642,26 @@ The tested Vitest 4 migration clears the mocker/worker advisories. Constructor
 mocks use regular functions because Vitest 4 does not construct arrow functions;
 the removed `minWorkers` CLI option is no longer used.
 
-One moderate development-only advisory remains: GHSA-rxp7-6hxx-x8q5 in the release
-tool's bundled npm `ip-address` dependency. Both the latest compatible npm 11.21.1
-and npm 12.2.1 still bundle vulnerable `ip-address` 10.7.2, so no fixed upstream npm
-bundle is available in those releases. Do not override or edit bundled contents.
-Production-only audit is clean; recheck the upstream bundle before updating.
+The SDK stays on the supported 1.x line (1.32.2), which includes the HTTP body/batch
+limits from 1.30.1 and opt-in validation limits from 1.32.0. The split 2.x packages
+are not required to obtain those fixes. `maxToolInputElements` is enabled at 10,000;
+our custom low-level tool handler also enforces that limit **before Zod parsing**,
+because it bypasses the SDK's high-level tool validation. Nested input is limited
+to 64 levels. HTTP requests default to 1 MiB in both Express and the SDK transport;
+SDK batches over 100 messages are rejected. Split unusually large meal-planning
+batches rather than raising limits without measuring memory usage.
+
+Zod 4.6.7 fixes constrained-collection memory exhaustion. Tool discovery uses its
+native JSON Schema converter in input mode, preserving optional/default arguments.
+The native service's promotions/Family tools are preserved by including the two
+existing local feature commits in this release.
+
+Full audit still reports two development-only bundled npm dependencies:
+`ip-address` 10.7.2 (GHSA-rxp7-6hxx-x8q5) and `undici` 6.29.0
+(GHSA-4qv8-2p9j-2685, GHSA-xjj6-f33q-929c). The latest compatible npm 11.21.1
+and npm 12.2.1 tarballs both bundle these versions. No fixed upstream npm bundle
+is available in those releases; do not override/edit bundled contents or suppress
+checks. Runtime-only audit is clean. Recheck upstream bundles before updating.
 
 ### Project Structure
 
