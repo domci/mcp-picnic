@@ -663,6 +663,12 @@ and npm 12.2.1 tarballs both bundle these versions. No fixed upstream npm bundle
 is available in those releases; do not override/edit bundled contents or suppress
 checks. Runtime-only audit is clean. Recheck upstream bundles before updating.
 
+The fork validates main pushes but does not automatically publish the upstream npm
+package or container tags. Publication steps run only in `ivo-toby/mcp-picnic`;
+all install/test/build checks still run in the fork. The configured native MCP is
+released separately as a tested bundle with a commit/hash manifest and a saved
+previous bundle for atomic rollback, without switching the primary checkout.
+
 ### Project Structure
 
 ```
