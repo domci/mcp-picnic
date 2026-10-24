@@ -6,6 +6,7 @@ import { BaseTransportServer } from "./base.js"
 import { TransportError, ErrorCode, ErrorUtils } from "../types/errors.js"
 import { createRateLimitMiddleware, RateLimitConfig } from "../utils/rate-limiter.js"
 import { randomUUID, timingSafeEqual } from "crypto"
+import { MAX_REQUEST_BODY_BYTES } from "../utils/input-limits.js"
 
 /**
  * Configuration options for the HTTP server
@@ -52,7 +53,7 @@ export class StreamableHttpServer extends BaseTransportServer {
       corsOptions: { origin: "*" },
       rateLimitConfig: { windowMs: 15 * 60 * 1000, maxRequests: 100 },
       requestTimeoutMs: 10000,
-      maxRequestSizeBytes: 1024 * 1024 * 10, // 10MB
+      maxRequestSizeBytes: MAX_REQUEST_BODY_BYTES,
       enableRequestLogging: true,
       maxConcurrentSessions: 100,
       sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
@@ -461,6 +462,7 @@ export class StreamableHttpServer extends BaseTransportServer {
     }
 
     const transport = new StreamableHTTPServerTransport({
+      maxRequestBodySize: this.options.maxRequestSizeBytes,
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (sid) => {
         this.transports[sid] = transport

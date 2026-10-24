@@ -3,6 +3,7 @@ import { toolRegistry } from "../tools/index.js"
 import { promptRegistry } from "../prompts/index.js"
 import { resourceRegistry } from "../resources/index.js"
 import packageJson from "../../package.json"
+import { MAX_TOOL_INPUT_ELEMENTS } from "./input-limits.js"
 
 export interface ServerConfig {
   name?: string
@@ -41,6 +42,7 @@ export function createMCPServer(config: ServerConfig = {}): McpServer {
     },
     {
       capabilities: finalConfig.capabilities,
+      maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
     },
   )
 }

@@ -29,6 +29,7 @@ MCP Picnic is a bridge between AI assistants (like Claude, ChatGPT, or other MCP
 
 - **Product Search**: Find any product in Picnic's catalog
 - **Weekly Promotions**: Fetch current Picnic deals from the app's "Alle acties" page
+- **Picnic Family**: Family benefits, raw PromoBox state, and read-only personalized Wunsch-Rabatt choices
 - **Cart Management**: Add, remove, and modify items in your shopping cart
 - **Order Tracking**: Monitor delivery status and driver location
 - **Account Management**: Access your profile, payment methods, and order history
@@ -553,6 +554,8 @@ The server provides comprehensive access to Picnic's functionality through 30+ s
 
 - **`picnic_search`** - Search for products by name or keywords
 - **`picnic_get_promotions`** - Get current weekly promotions/deals with prices and labels
+- **`picnic_get_family_benefits`** - Get Family benefits plus raw, non-authoritative PromoBox counters when exposed
+- **`picnic_list_wunsch_rabatt_choices`** - Read-only personalized PromoBox choices
 - **`picnic_get_suggestions`** - Get product suggestions based on query
 - **`picnic_get_product_details`** - Get detailed information about a specific product
 - **`picnic_get_image`** - Get product images in various sizes (tiny to extra-large)
@@ -622,6 +625,49 @@ npm run typecheck
 # Linting
 npm run lint
 ```
+
+### Dependency security maintenance
+
+Use `npm ci --ignore-scripts`, `npm run build`, `npm run typecheck`, and
+`npm test -- --maxWorkers=2` to verify dependency updates without
+starting the server. Check both `npm audit` and `npm audit --omit=dev`.
+
+The overrides keep the Hono Node adapter on patched 1.x and Vite on patched 7.x,
+within their parents' supported ranges. Vitest 4.1.12 and Vite 7.3.7 are tested on
+Node.js 24.21.0; Vite requires Node.js 20.19+ or 22.12+ (Vitest excludes Node.js 21/23).
+The TypeScript ESLint 6.x override replaces its exact vulnerable minimatch 9.x pin
+with a patched release of the same major. Keep these overrides narrow.
+
+The tested Vitest 4 migration clears the mocker/worker advisories. Constructor
+mocks use regular functions because Vitest 4 does not construct arrow functions;
+the removed `minWorkers` CLI option is no longer used.
+
+The SDK stays on the supported 1.x line (1.32.2), which includes the HTTP body/batch
+limits from 1.30.1 and opt-in validation limits from 1.32.0. The split 2.x packages
+are not required to obtain those fixes. `maxToolInputElements` is enabled at 10,000;
+our custom low-level tool handler also enforces that limit **before Zod parsing**,
+because it bypasses the SDK's high-level tool validation. Nested input is limited
+to 64 levels. HTTP requests default to 1 MiB in both Express and the SDK transport;
+SDK batches over 100 messages are rejected. Split unusually large meal-planning
+batches rather than raising limits without measuring memory usage.
+
+Zod 4.6.7 fixes constrained-collection memory exhaustion. Tool discovery uses its
+native JSON Schema converter in input mode, preserving optional/default arguments.
+The native service's promotions/Family tools are preserved by including the two
+existing local feature commits in this release.
+
+Full audit still reports two development-only bundled npm dependencies:
+`ip-address` 10.7.2 (GHSA-rxp7-6hxx-x8q5) and `undici` 6.29.0
+(GHSA-4qv8-2p9j-2685, GHSA-xjj6-f33q-929c). The latest compatible npm 11.21.1
+and npm 12.2.1 tarballs both bundle these versions. No fixed upstream npm bundle
+is available in those releases; do not override/edit bundled contents or suppress
+checks. Runtime-only audit is clean. Recheck upstream bundles before updating.
+
+The fork validates main pushes but does not automatically publish the upstream npm
+package or container tags. Publication steps run only in `ivo-toby/mcp-picnic`;
+all install/test/build checks still run in the fork. The configured native MCP is
+released separately as a tested bundle with a commit/hash manifest and a saved
+previous bundle for atomic rollback, without switching the primary checkout.
 
 ### Project Structure
 

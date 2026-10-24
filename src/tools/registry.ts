@@ -1,6 +1,6 @@
 import { z } from "zod"
-import { zodToJsonSchema } from "zod-to-json-schema"
 import { ToolError, ErrorCode, ErrorUtils } from "../types/errors.js"
+import { assertToolInputLimits } from "../utils/input-limits.js"
 
 /**
  * MCP tool annotations. Hints for the calling model about a tool's side effects —
@@ -85,7 +85,7 @@ class ToolRegistry {
       definitions[name.toUpperCase()] = {
         name: tool.name,
         description: tool.description,
-        inputSchema: zodToJsonSchema(tool.inputSchema),
+        inputSchema: z.toJSONSchema(tool.inputSchema, { io: "input", target: "draft-7" }),
         ...(tool.annotations && { annotations: tool.annotations }),
       }
     }
@@ -96,7 +96,7 @@ class ToolRegistry {
     return Array.from(this.tools.values()).map((tool) => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: zodToJsonSchema(tool.inputSchema),
+      inputSchema: z.toJSONSchema(tool.inputSchema, { io: "input", target: "draft-7" }),
       ...(tool.annotations && { annotations: tool.annotations }),
     }))
   }
@@ -111,6 +111,7 @@ class ToolRegistry {
     }
 
     try {
+      assertToolInputLimits(args)
       // Validate input with Zod schema
       let validatedArgs: unknown
       try {
@@ -119,10 +120,10 @@ class ToolRegistry {
         if (error instanceof z.ZodError) {
           throw new ToolError(
             ErrorCode.TOOL_VALIDATION_FAILED,
-            `Invalid input for tool '${name}': ${error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ")}`,
+            `Invalid input for tool '${name}': ${error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ")}`,
             {
               toolName: name,
-              validationErrors: error.errors,
+              validationErrors: error.issues,
               providedArgs: args,
             },
           )
@@ -167,10 +168,10 @@ class ToolRegistry {
             ErrorUtils.logError(error, `Tool ${name} output validation`)
             throw new ToolError(
               ErrorCode.TOOL_EXECUTION_FAILED,
-              `Tool '${name}' returned invalid output: ${error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ")}`,
+              `Tool '${name}' returned invalid output: ${error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ")}`,
               {
                 toolName: name,
-                validationErrors: error.errors,
+                validationErrors: error.issues,
                 actualOutput: result,
               },
             )
