@@ -26,11 +26,10 @@ export async function installFetchProxy(): Promise<void> {
       input: Parameters<typeof undiciFetch>[0],
       init?: Parameters<typeof undiciFetch>[1],
     ) => undiciFetch(input, { ...init, dispatcher })) as unknown as typeof fetch
-    console.error(`[mcp-picnic] outbound fetch routed through proxy (${proxyUrl})`)
-  } catch (error) {
+    console.error("[mcp-picnic] outbound fetch routed through proxy")
+  } catch {
     console.error(
-      "[mcp-picnic] proxy env var is set but proxy setup failed; continuing with direct egress:",
-      error,
+      "[mcp-picnic] proxy env var is set but proxy setup failed; continuing with direct egress",
     )
   }
 }
