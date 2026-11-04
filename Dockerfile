@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine AS deps
+FROM node:22.23.4-alpine AS deps
 WORKDIR /app
 
 # Install dependencies with cache-friendly layering
@@ -12,7 +12,7 @@ WORKDIR /app
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine AS runtime
+FROM node:22.23.4-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ARG APP_UID=1638

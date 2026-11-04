@@ -51,7 +51,7 @@ MCP Picnic is a bridge between AI assistants (like Claude, ChatGPT, or other MCP
 
 - A Picnic account (available in Netherlands, Germany, or France)
 - An MCP-compatible AI assistant (Claude Desktop, Continue, etc.)
-- Node.js 18+ installed on your system
+- Node.js 22.23.4+, 24.22.1+, or 26.12.1+ installed on your system (supported release lines only)
 
 ### Quick Start
 
@@ -628,6 +628,18 @@ npm run lint
 
 ### Dependency security maintenance
 
+Node.js must meet the `engines.node` security floors: 22.23.4, 24.22.1, or
+26.12.1 on the corresponding supported lines. Docker and `.node-version` use
+22.23.4. These releases fix the actively exploited Brotli decoder vulnerability
+CVE-2026-111497 (GHSA-9v8h-qqgm-4m35). Outbound fetch responses may be Brotli
+compressed, so stdio-only operation does not remove this exposure. Updating the
+npm `undici` package cannot replace Node's native Brotli decoder.
+
+A source update does not upgrade already-running native MCP processes or
+containers. Operators must separately install a patched Node runtime and restart
+native consumers, or rebuild/restart containers, then verify the executable
+version and deployed bundle. Package engine warnings alone are not enforcement.
+
 Use `npm ci --ignore-scripts`, `npm run build`, `npm run typecheck`, and
 `npm test -- --maxWorkers=2` to verify dependency updates without
 starting the server. Check both `npm audit` and `npm audit --omit=dev`.
@@ -656,12 +668,16 @@ native JSON Schema converter in input mode, preserving optional/default argument
 The native service's promotions/Family tools are preserved by including the two
 existing local feature commits in this release.
 
-Full audit still reports two development-only bundled npm dependencies:
-`ip-address` 10.7.2 (GHSA-rxp7-6hxx-x8q5) and `undici` 6.29.0
-(GHSA-4qv8-2p9j-2685, GHSA-xjj6-f33q-929c). The latest compatible npm 11.21.1
-and npm 12.2.1 tarballs both bundle these versions. No fixed upstream npm bundle
-is available in those releases; do not override/edit bundled contents or suppress
-checks. Runtime-only audit is clean. Recheck upstream bundles before updating.
+The full audit currently also reports development-only npm-bundled `undici`
+6.29.0 and `ip-address` 10.7.2, plus minimatch/glob advisory chains in lint/release
+tooling. Recheck upstream bundles before changing those tools; do not override
+bundled contents or accept audit suggestions to downgrade unrelated parents.
+Runtime audit now reports GHSA-rmxm-3fg6-px4f in `@hono/node-server` 1.19.17
+(fixed in 2.1.3). This application's Express transports do not use `serveStatic`,
+the affected consumer, but the lock remains affected. A 2.x adapter override
+crosses the SDK's supported 1.x dependency range and needs separate review.
+Neither audit is currently clean; the existing runtime-audit CI gate will fail
+until that remaining dependency is addressed.
 
 The fork validates main pushes but does not automatically publish the upstream npm
 package or container tags. Publication steps run only in `ivo-toby/mcp-picnic`;
