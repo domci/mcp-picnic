@@ -672,12 +672,10 @@ The full audit currently also reports development-only npm-bundled `undici`
 6.29.0 and `ip-address` 10.7.2, plus minimatch/glob advisory chains in lint/release
 tooling. Recheck upstream bundles before changing those tools; do not override
 bundled contents or accept audit suggestions to downgrade unrelated parents.
-Runtime audit now reports GHSA-rmxm-3fg6-px4f in `@hono/node-server` 1.19.17
-(fixed in 2.1.3). This application's Express transports do not use `serveStatic`,
-the affected consumer, but the lock remains affected. A 2.x adapter override
-crosses the SDK's supported 1.x dependency range and needs separate review.
-Neither audit is currently clean; the existing runtime-audit CI gate will fail
-until that remaining dependency is addressed.
+Runtime audit requires the `@hono/node-server` override to stay on 2.1.3 or
+later (GHSA-rmxm-3fg6-px4f). The MCP SDK declares `^1.19.9 || ^2.0.5` for that
+adapter, so the 2.x override stays inside the SDK's supported range. Without it,
+1.19.x fails the runtime-audit CI gate.
 
 The fork validates main pushes but does not automatically publish the upstream npm
 package or container tags. Publication steps run only in `ivo-toby/mcp-picnic`;
