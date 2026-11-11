@@ -49,20 +49,22 @@ Get Picnic's current weekly promotions/deals from the app's "Alle acties" page.
 
 #### `picnic_get_family_benefits`
 
-Get the known German Picnic Family benefits plus the authenticated PromoBox summary exposed by `/pages/promo-page-root`.
+Get the live Picnic Family (membership) offer from the app's Family page, `/pages/membership-proposition-page`.
 
-**Returns:** The Family benefit summary plus `account_evidence.status` and filtered page signals. When Picnic exposes PromoBox state, `promo_box_state` reports the available-promotion count and Picnic's raw activation counters with an explicit warning that they do not verify selection or savings. The page exposes no authoritative subscription status or account-wide monetary savings total.
+**Returns:** The page `title` and its visible `texts` in render order (plans and prices, benefits, savings guarantee, FAQ), in the account's language. It does not report whether the account is a Family member.
 
 #### `picnic_list_wunsch_rabatt_choices`
 
-Read-only listing of current personalized PromoBox choices identified by the PromoBox tile ID and targeted-campaign context exposed by Picnic.
+List this week's personal Wunsch-Rabatt (PromoBox) choices with live activation state from `POST /pages/task/get-promo-box-promos`, the call the app makes after every PromoBox cart change.
+
+A choice is used by adding its `product_id` to the cart with `picnic_add_to_cart`: that spends one of `remaining_activations` and marks it `activated`. Removing it from the cart frees the activation. `picnic_get_cart` then shows the order line with `promo: true`, the discounted `price` and `original_price`.
 
 **Parameters:**
 
 - `limit` (number, optional): Maximum number of choices to return (1-100, default: 25)
 - `offset` (number, optional): Number of choices to skip for pagination (default: 0)
 
-**Returns:** Filtered choices with displayed promotional prices, pagination, activation limitations, and (when exposed) raw `promo_box_state`. It is read-only: cart additions can change Picnic's `isExplicitlyActivated` and `remainingActivations` fields while cart prices remain undiscounted, and `/pages/task/get-promo-box-promos` only refreshes those fields. An empty list means the page exposed no recognizable personalized choice; it does not prove that the account has none.
+**Returns:** `remaining_activations`, choices with promotional price, original price, `available` (false = locked) and `activated`, and pagination.
 
 #### `picnic_get_suggestions`
 

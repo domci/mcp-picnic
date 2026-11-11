@@ -81,6 +81,7 @@ function filterCartData(cart: unknown) {
       id?: string
       display_price?: number
       price?: number
+      decorators?: Array<{ type?: string; display_price?: number }>
       items?: Array<{
         id?: string
         name?: string
@@ -97,21 +98,30 @@ function filterCartData(cart: unknown) {
     total_savings?: number
   }
 
-  const filteredItems = cartObj.items?.map((orderLine) => ({
-    order_line_id: orderLine.id,
-    price: orderLine.display_price || orderLine.price,
-    articles: orderLine.items?.map((article) => ({
-      product_id: article.id,
-      name: article.name,
-      unit: article.unit_quantity,
-      price: article.price,
-      // How many of this article are in the cart. Picnic carries it in a QUANTITY decorator
-      // rather than a plain field; without it a caller cannot tell one unit from three, so it
-      // cannot check whether an ambiguous add actually landed (see mutateCart).
-      quantity: article.decorators?.find((d) => d.type === "QUANTITY")?.quantity ?? 1,
-      ...(article.image_ids?.length && { image_id: article.image_ids[0] }),
-    })),
-  }))
+  const filteredItems = cartObj.items?.map((orderLine) => {
+    const listPrice = orderLine.display_price || orderLine.price
+    // Promotions (incl. activated Wunsch-Rabatt) keep the list price in display_price and put the
+    // price actually charged in a PRICE decorator; the cart total uses the decorator price.
+    const promoPrice = orderLine.decorators?.find((d) => d.type === "PRICE")?.display_price
+    const isPromo = orderLine.decorators?.some((d) => d.type === "PROMO") ?? false
+    return {
+      order_line_id: orderLine.id,
+      price: promoPrice ?? listPrice,
+      ...(promoPrice !== undefined && promoPrice !== listPrice && { original_price: listPrice }),
+      ...(isPromo && { promo: true }),
+      articles: orderLine.items?.map((article) => ({
+        product_id: article.id,
+        name: article.name,
+        unit: article.unit_quantity,
+        price: article.price,
+        // How many of this article are in the cart. Picnic carries it in a QUANTITY decorator
+        // rather than a plain field; without it a caller cannot tell one unit from three, so it
+        // cannot check whether an ambiguous add actually landed (see mutateCart).
+        quantity: article.decorators?.find((d) => d.type === "QUANTITY")?.quantity ?? 1,
+        ...(article.image_ids?.length && { image_id: article.image_ids[0] }),
+      })),
+    }
+  })
 
   return {
     type: cartObj.type,
@@ -140,14 +150,9 @@ interface PicnicPromotionProduct {
 
 const PROMOTIONS_PAGE_ID = "promo-page-root"
 const PROMOTIONS_ENDPOINT = `/pages/${PROMOTIONS_PAGE_ID}`
-const FAMILY_SIGNAL = /family|familie|wunsch[-_\s]?rabatt|markthalle|lieferfenster|delivery window/i
-const FAMILY_BENEFITS = [
-  { id: "produce", description: "10% off fruit and vegetables" },
-  { id: "markthalle", description: "10% off Markthalle" },
-  { id: "wunsch_rabatt", description: "2x more Wunsch-Rabatt choices" },
-  { id: "delivery_windows", description: "Up to 3x as many delivery windows" },
-  { id: "reservable_windows", description: "Reservable delivery windows" },
-] as const
+const FAMILY_PAGE_ENDPOINT = "/pages/membership-proposition-page"
+// The app POSTs here after every PromoBox cart add/remove to refresh the live Wunsch-Rabatt state.
+const PROMO_BOX_STATE_ENDPOINT = "/pages/task/get-promo-box-promos"
 
 function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value && typeof value === "object" && !Array.isArray(value))
@@ -255,32 +260,6 @@ function extractPromotionsFromPage(
   return promotions
 }
 
-function extractPromoBoxSummary(page: unknown): {
-  available_promotions_total: number
-  server_reported_remaining_activations: number
-  server_reported_explicit_activations: number
-  verification: "not_proof_of_selection_or_savings"
-} | null {
-  const promoBoxState = extractPromoBoxState(page)
-  if (!promoBoxState) return null
-  const remainingActivations = promoBoxState.remainingActivations
-  if (
-    typeof remainingActivations !== "number" ||
-    !Number.isInteger(remainingActivations) ||
-    remainingActivations < 0
-  )
-    return null
-
-  return {
-    available_promotions_total: Object.keys(promoBoxState.availablePromoIDs).length,
-    server_reported_remaining_activations: remainingActivations,
-    server_reported_explicit_activations: Object.values(promoBoxState.availablePromoIDs).filter(
-      ({ isExplicitlyActivated }) => isExplicitlyActivated === true,
-    ).length,
-    verification: "not_proof_of_selection_or_savings",
-  }
-}
-
 interface PromoBoxState {
   availablePromoIDs: Record<string, { isExplicitlyActivated?: boolean }>
   remainingActivations: number
@@ -327,32 +306,24 @@ function extractPromoBoxState(page: unknown): PromoBoxState | null {
   return visit(page)
 }
 
-function extractFamilySignals(page: unknown): string[] {
-  const signals: string[] = []
-  const seen = new Set<string>()
-
+// Visible text of a Picnic PML page, in render order. Strips the #(#rrggbb) colour and ** markup.
+function extractPageTexts(page: unknown): string[] {
+  const texts = new Set<string>()
   const visit = (node: unknown): void => {
-    if (typeof node === "string") {
-      const signal = node.replace(/\s+/g, " ").trim().slice(0, 500)
-      if (FAMILY_SIGNAL.test(signal) && !seen.has(signal)) {
-        seen.add(signal)
-        signals.push(signal)
-      }
-      return
+    if (Array.isArray(node)) return node.forEach(visit)
+    if (!isRecord(node)) return
+    if (typeof node.markdown === "string") {
+      const text = node.markdown
+        .replace(/#\(#[0-9a-f]{3,8}\)/gi, "")
+        .replace(/\*\*/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+      if (text) texts.add(text)
     }
-    if (Array.isArray(node)) {
-      for (const child of node) visit(child)
-      return
-    }
-    if (isRecord(node)) {
-      if (node === (page as UnknownRecord).script || node === (page as UnknownRecord).analytics)
-        return
-      for (const value of Object.values(node)) visit(value)
-    }
+    for (const value of Object.values(node)) visit(value)
   }
-
   visit(page)
-  return signals.slice(0, 50)
+  return [...texts]
 }
 
 // Search products tool
@@ -468,9 +439,9 @@ toolRegistry.register({
 toolRegistry.register({
   name: "picnic_get_family_benefits",
   description:
-    "Get a read-only summary of Picnic Family benefits plus Family/Wunsch signals exposed by " +
-    "the authenticated promotions page. This page is not an authoritative subscription-status " +
-    "endpoint, so the result reports evidence rather than claiming enrollment.",
+    "Get the live Picnic Family (membership) offer from the app's Family page: plans and prices, " +
+    "benefits, savings guarantee and FAQ, as the page's visible text in the account's language. " +
+    "Does not report whether this account is a Family member.",
   inputSchema: z.object({}),
   annotations: {
     readOnlyHint: true,
@@ -481,21 +452,12 @@ toolRegistry.register({
   handler: async () => {
     await ensureClientInitialized()
     const client = getPicnicClient()
-    const page = await client.sendRequest("GET", PROMOTIONS_ENDPOINT, null, true)
-    const signals = extractFamilySignals(page)
-    const promoBoxState = extractPromoBoxSummary(page)
-
+    const page = await client.sendRequest("GET", FAMILY_PAGE_ENDPOINT, null, true)
+    const header = isRecord(page) ? getRecordProperty(page, "header") : null
     return {
-      source: {
-        pageId: PROMOTIONS_PAGE_ID,
-        endpoint: PROMOTIONS_ENDPOINT,
-      },
-      benefits: FAMILY_BENEFITS,
-      account_evidence: {
-        status: signals.length ? "family_data_exposed" : "not_exposed",
-        signals,
-      },
-      ...(promoBoxState && { promo_box_state: promoBoxState }),
+      source: { endpoint: FAMILY_PAGE_ENDPOINT },
+      ...(typeof header?.title === "string" && { title: header.title }),
+      texts: extractPageTexts(page),
     }
   },
 })
@@ -503,10 +465,11 @@ toolRegistry.register({
 toolRegistry.register({
   name: "picnic_list_wunsch_rabatt_choices",
   description:
-    "Read-only list of current PromoBox Wunsch-Rabatt choices from the authenticated promotions " +
-    "page. Displayed promotional prices and server activation counters are not proof that a choice " +
-    "is selected or that its discount is applied. No selection tool is available until Picnic " +
-    "exposes a selection action with authoritative applied-price verification.",
+    "List this week's personal Wunsch-Rabatt (PromoBox) choices with live activation state. " +
+    "A choice is used by adding its product_id to the cart (picnic_add_to_cart); that spends one " +
+    "of remaining_activations and marks the choice activated. Removing it from the cart frees the " +
+    "activation again. Verify with picnic_get_cart: the order line shows promo: true and the " +
+    "discounted price.",
   inputSchema: promotionsInputSchema,
   annotations: {
     readOnlyHint: true,
@@ -517,35 +480,37 @@ toolRegistry.register({
   handler: async (args) => {
     await ensureClientInitialized()
     const client = getPicnicClient()
-    const page = await client.sendRequest("GET", PROMOTIONS_ENDPOINT, null, true)
+    const [page, liveState] = await Promise.all([
+      client.sendRequest("GET", PROMOTIONS_ENDPOINT, null, true),
+      client.sendRequest("POST", PROMO_BOX_STATE_ENDPOINT, { payload: {} }, true),
+    ])
+    // Fall back to the snapshot embedded in the page if the live call returns nothing usable.
+    const state = extractPromoBoxState(liveState) ?? extractPromoBoxState(page)
     const allChoices = extractPromotionsFromPage(
       page,
       (tile) => isPromoBoxTile(tile) && hasTargetedCampaignContext(tile),
-    )
-    const promoBoxState = extractPromoBoxSummary(page)
+    ).map((choice) => {
+      const promo = state?.availablePromoIDs[choice.promotion_id]
+      return {
+        ...choice,
+        available: !state || !!promo,
+        activated: promo?.isExplicitlyActivated === true,
+      }
+    })
     const offset = args.offset ?? 0
     const limit = args.limit ?? 25
     const choices = allChoices.slice(offset, offset + limit)
 
     return {
-      source: {
-        pageId: PROMOTIONS_PAGE_ID,
-        endpoint: PROMOTIONS_ENDPOINT,
-      },
+      source: { endpoint: PROMOTIONS_ENDPOINT, state_endpoint: PROMO_BOX_STATE_ENDPOINT },
+      ...(state && { remaining_activations: state.remainingActivations }),
       choices,
-      ...(promoBoxState && { promo_box_state: promoBoxState }),
       pagination: {
         offset,
         limit,
         returned: choices.length,
         total: allChoices.length,
         hasMore: offset + limit < allChoices.length,
-      },
-      activation: {
-        mode: "unavailable",
-        selection_tool_available: false,
-        limitation:
-          "Cart additions can change Picnic's isExplicitlyActivated/remainingActivations fields without applying the displayed discount to cart prices. The exposed PromoBox refresh is read-only, and no verified selection action is available.",
       },
     }
   },

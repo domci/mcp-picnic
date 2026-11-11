@@ -182,4 +182,28 @@ describe("picnic_get_cart quantities", () => {
     const cart = parseToolResult(await toolRegistry.executeTool("picnic_get_cart", {}))
     expect(cart.items[0].articles[0].quantity).toBe(1)
   })
+
+  // Shape captured from a live DE cart after adding a Wunsch-Rabatt product.
+  it("reports the promo price from the PRICE decorator, not the list price", async () => {
+    const { toolRegistry } = await import("../../../src/tools/registry.js")
+    mocks.getCart.mockResolvedValue({
+      type: "ORDER",
+      id: "shopping_cart",
+      items: [
+        {
+          id: "1",
+          display_price: 159,
+          price: 159,
+          decorators: [{ type: "PROMO" }, { type: "PRICE", display_price: 119 }],
+          items: [{ id: "s1045821", name: "Broccoli", price: 159 }],
+        },
+        { id: "2", display_price: 255, price: 255, items: [{ id: "s1", name: "x", price: 255 }] },
+      ],
+    })
+
+    const cart = parseToolResult(await toolRegistry.executeTool("picnic_get_cart", {}))
+    expect(cart.items[0]).toMatchObject({ price: 119, original_price: 159, promo: true })
+    expect(cart.items[1].price).toBe(255)
+    expect(cart.items[1]).not.toHaveProperty("promo")
+  })
 })
